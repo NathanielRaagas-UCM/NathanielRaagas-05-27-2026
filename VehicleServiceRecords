@@ -1,0 +1,232 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
+
+class Program
+{
+    static string dataDir = "data";
+    static string recordFile = Path.Combine(dataDir, "records.txt");
+    static string auditFile = Path.Combine(dataDir, "audit.txt");
+
+    static void Main()
+    {
+        InitializeStorage();
+
+        while (true)
+        {
+            Console.WriteLine("\n=== VEHICLE SERVICE RECORD SYSTEM ===");
+            Console.WriteLine("1. Add Record");
+            Console.WriteLine("2. View Records");
+            Console.WriteLine("3. Update Record");
+            Console.WriteLine("4. Soft Delete");
+            Console.WriteLine("5. Hard Delete");
+            Console.WriteLine("6. Generate Report");
+            Console.WriteLine("7. Exit");
+
+            Console.Write("Choose: ");
+            string choice = Console.ReadLine();
+
+            try
+            {
+                switch (choice)
+                {
+                    case "1": AddRecord(); break;
+                    case "2": ViewRecords(); break;
+                    case "3": UpdateRecord(); break;
+                    case "4": SoftDelete(); break;
+                    case "5": HardDelete(); break;
+                    case "6": GenerateReport(); break;
+                    case "7": return;
+                    default: Console.WriteLine("Invalid choice"); break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("ERROR", ex.Message);
+                Console.WriteLine("Error occurred.");
+            }
+        }
+    }
+
+    static void InitializeStorage()
+    {
+        if (!Directory.Exists(dataDir))
+            Directory.CreateDirectory(dataDir);
+
+        if (!File.Exists(recordFile))
+            File.Create(recordFile).Close();
+
+        if (!File.Exists(auditFile))
+            File.Create(auditFile).Close();
+    }
+
+    static void AddRecord()
+    {
+        Console.Write("Vehicle Name: ");
+        string vehicle = Console.ReadLine();
+
+        Console.Write("Owner Name: ");
+        string owner = Console.ReadLine();
+
+        Console.Write("Service Type: ");
+        string service = Console.ReadLine();
+
+        Console.Write("Cost: ");
+        if (!decimal.TryParse(Console.ReadLine(), out decimal cost))
+        {
+            Console.WriteLine("Invalid cost!");
+            return;
+        }
+
+        string id = Guid.NewGuid().ToString();
+        string now = DateTime.Now.ToString();
+
+        string data = $"{id}|{vehicle}|{owner}|{service}|{cost}|{now}|{now}|true";
+        string checksum = GenerateChecksum(data);
+
+        File.AppendAllText(recordFile, data + "|" + checksum + "\n");
+
+        Log("ADD", id);
+        Console.WriteLine("Record added!");
+    }
+
+    static void ViewRecords()
+    {
+        var lines = File.ReadAllLines(recordFile);
+
+        Console.Write("Search vehicle (optional): ");
+        string search = Console.ReadLine().ToLower();
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split('|');
+            if (parts.Length < 9) continue;
+
+            if (parts[7] == "true" &&
+                (string.IsNullOrEmpty(search) || parts[1].ToLower().Contains(search)))
+            {
+                Console.WriteLine($"ID: {parts[0]} | Vehicle: {parts[1]} | Owner: {parts[2]} | Service: {parts[3]} | Cost: {parts[4]}");
+            }
+        }
+
+        Log("READ", "Viewed records");
+    }
+
+    static void UpdateRecord()
+    {
+        var lines = File.ReadAllLines(recordFile).ToList();
+
+        Console.Write("Enter ID: ");
+        string id = Console.ReadLine();
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var parts = lines[i].Split('|');
+
+            if (parts[0] == id)
+            {
+                Console.Write("New Service Type: ");
+                parts[3] = Console.ReadLine();
+
+                Console.Write("New Cost: ");
+                parts[4] = Console.ReadLine();
+
+                parts[6] = DateTime.Now.ToString();
+
+                string data = string.Join("|", parts.Take(8));
+                parts[8] = GenerateChecksum(data);
+
+                lines[i] = string.Join("|", parts);
+                File.WriteAllLines(recordFile, lines);
+
+                Log("UPDATE", id);
+                Console.WriteLine("Updated!");
+                return;
+            }
+        }
+
+        Console.WriteLine("Record not found.");
+    }
+
+    static void SoftDelete()
+    {
+        var lines = File.ReadAllLines(recordFile).ToList();
+
+        Console.Write("Enter ID: ");
+        string id = Console.ReadLine();
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var parts = lines[i].Split('|');
+
+            if (parts[0] == id)
+            {
+                parts[7] = "false";
+                lines[i] = string.Join("|", parts);
+                File.WriteAllLines(recordFile, lines);
+
+                Log("SOFT DELETE", id);
+                Console.WriteLine("Soft deleted!");
+                return;
+            }
+        }
+    }
+
+    static void HardDelete()
+    {
+        var lines = File.ReadAllLines(recordFile).ToList();
+
+        Console.Write("Enter ID: ");
+        string id = Console.ReadLine();
+
+        lines = lines.Where(l => !l.StartsWith(id)).ToList();
+        File.WriteAllLines(recordFile, lines);
+
+        Log("HARD DELETE", id);
+        Console.WriteLine("Hard deleted!");
+    }
+
+    static void GenerateReport()
+    {
+        var lines = File.ReadAllLines(recordFile);
+
+        int total = 0;
+        decimal totalCost = 0;
+
+        foreach (var line in lines)
+        {
+            var parts = line.Split('|');
+
+            if (parts.Length < 9) continue;
+
+            if (parts[7] == "true")
+            {
+                total++;
+                totalCost += decimal.Parse(parts[4]);
+            }
+        }
+
+        Console.WriteLine($"Total Active Records: {total}");
+        Console.WriteLine($"Total Cost: {totalCost}");
+
+        Log("REPORT", "Generated report");
+    }
+
+    static void Log(string action, string details)
+    {
+        File.AppendAllText(auditFile,
+            $"{DateTime.Now} | {action} | {details}\n");
+    }
+
+    static string GenerateChecksum(string input)
+    {
+        using (SHA256 sha = SHA256.Create())
+        {
+            byte[] bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
+            return Convert.ToBase64String(bytes);
+        }
+    }
+}
