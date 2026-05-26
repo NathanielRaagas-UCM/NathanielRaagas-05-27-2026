@@ -46,7 +46,7 @@ class Program
             catch (Exception ex)
             {
                 Log("ERROR", ex.Message);
-                Console.WriteLine("Error occurred.");
+                Console.WriteLine("Something went wrong.");
             }
         }
     }
@@ -67,12 +67,27 @@ class Program
     {
         Console.Write("Vehicle Name: ");
         string vehicle = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(vehicle))
+        {
+            Console.WriteLine("Vehicle name required!");
+            return;
+        }
 
         Console.Write("Owner Name: ");
         string owner = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(owner))
+        {
+            Console.WriteLine("Owner name required!");
+            return;
+        }
 
         Console.Write("Service Type: ");
         string service = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(service))
+        {
+            Console.WriteLine("Service type required!");
+            return;
+        }
 
         Console.Write("Cost: ");
         if (!decimal.TryParse(Console.ReadLine(), out decimal cost))
@@ -98,7 +113,8 @@ class Program
         var lines = File.ReadAllLines(recordFile);
 
         Console.Write("Search vehicle (optional): ");
-        string search = Console.ReadLine().ToLower();
+        string search = Console.ReadLine();
+        search = search == null ? "" : search.ToLower();
 
         foreach (var line in lines)
         {
@@ -129,11 +145,22 @@ class Program
             if (parts[0] == id)
             {
                 Console.Write("New Service Type: ");
-                parts[3] = Console.ReadLine();
+                string newService = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(newService))
+                {
+                    Console.WriteLine("Invalid service!");
+                    return;
+                }
 
                 Console.Write("New Cost: ");
-                parts[4] = Console.ReadLine();
+                if (!decimal.TryParse(Console.ReadLine(), out decimal newCost))
+                {
+                    Console.WriteLine("Invalid cost!");
+                    return;
+                }
 
+                parts[3] = newService;
+                parts[4] = newCost.ToString();
                 parts[6] = DateTime.Now.ToString();
 
                 string data = string.Join("|", parts.Take(8));
@@ -173,6 +200,8 @@ class Program
                 return;
             }
         }
+
+        Console.WriteLine("Record not found.");
     }
 
     static void HardDelete()
@@ -182,11 +211,20 @@ class Program
         Console.Write("Enter ID: ");
         string id = Console.ReadLine();
 
-        lines = lines.Where(l => !l.StartsWith(id)).ToList();
+        int before = lines.Count;
+
+        lines = lines.Where(l => l.Split('|')[0] != id).ToList();
         File.WriteAllLines(recordFile, lines);
 
-        Log("HARD DELETE", id);
-        Console.WriteLine("Hard deleted!");
+        if (lines.Count < before)
+        {
+            Log("HARD DELETE", id);
+            Console.WriteLine("Hard deleted!");
+        }
+        else
+        {
+            Console.WriteLine("Record not found.");
+        }
     }
 
     static void GenerateReport()
@@ -205,7 +243,11 @@ class Program
             if (parts[7] == "true")
             {
                 total++;
-                totalCost += decimal.Parse(parts[4]);
+
+                if (decimal.TryParse(parts[4], out decimal cost))
+                {
+                    totalCost += cost;
+                }
             }
         }
 
